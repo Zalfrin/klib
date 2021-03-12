@@ -30,21 +30,25 @@ __all__ = [
 ]
 
 
-def optimize_ints(data: Union[pd.Series, pd.DataFrame]) -> pd.DataFrame:
-    data = pd.DataFrame(data).copy()
+def optimize_ints(data: Union[pd.Series, pd.DataFrame], inplace: bool) -> Optional[pd.DataFrame]:
+    if not inplace:
+        data = pd.DataFrame(data).copy()
     ints = data.select_dtypes(include=["int64"]).columns.tolist()
     data[ints] = data[ints].apply(pd.to_numeric, downcast="integer")
-    return data
+    if not inplace:
+        return data
 
 
-def optimize_floats(data: Union[pd.Series, pd.DataFrame]) -> pd.DataFrame:
-    data = pd.DataFrame(data).copy()
+def optimize_floats(data: Union[pd.Series, pd.DataFrame], inplace: bool) -> Optional[pd.DataFrame]:
+    if not inplace:
+        data = pd.DataFrame(data).copy()
     floats = data.select_dtypes(include=["float64"]).columns.tolist()
     data[floats] = data[floats].apply(pd.to_numeric, downcast="float")
-    return data
+    if not inplace:
+        return data
 
 
-def clean_column_names(data: pd.DataFrame, hints: bool = True) -> pd.DataFrame:
+def clean_column_names(data: pd.DataFrame, hints: bool = True, inplace: bool = False) -> Optional[pd.DataFrame]:
     """ Cleans the column names of the provided Pandas Dataframe and optionally \
         provides hints on duplicate and long column names.
 
@@ -63,7 +67,10 @@ def clean_column_names(data: pd.DataFrame, hints: bool = True) -> pd.DataFrame:
     """
 
     _validate_input_bool(hints, "hints")
-
+    
+    if not inplace:
+        data = pd.DataFrame(data).copy()
+    
     # Handle CamelCase
     for i, col in enumerate(data.columns):
         matches = re.findall(re.compile("[a-z][A-Z]"), col)
@@ -123,7 +130,8 @@ def clean_column_names(data: pd.DataFrame, hints: bool = True) -> pd.DataFrame:
             f"following columns {long_col_names}."
         )
 
-    return data
+    if not inplace:
+        return data
 
 
 def convert_datatypes(
@@ -131,7 +139,8 @@ def convert_datatypes(
     category: bool = True,
     cat_threshold: float = 0.05,
     cat_exclude: Optional[List[Union[str, int]]] = None,
-) -> pd.DataFrame:
+    inplace: bool = False,
+) -> Optional[pd.DataFrame]:
     """ Converts columns to best possible dtypes using dtypes supporting pd.NA.
     Temporarily not converting to integers due to an issue in pandas. This is expected \
         to be fixed in pandas 1.1. See https://github.com/pandas-dev/pandas/issues/33803
@@ -161,7 +170,8 @@ def convert_datatypes(
 
     cat_exclude = [] if cat_exclude is None else cat_exclude.copy()
 
-    data = pd.DataFrame(data).copy()
+    if not inplace:
+        data = pd.DataFrame(data).copy()
     for col in data.columns:
         unique_vals_ratio = data[col].nunique(dropna=False) / data.shape[0]
         if (
@@ -182,7 +192,8 @@ def convert_datatypes(
     data = optimize_ints(data)
     data = optimize_floats(data)
 
-    return data
+    if not inplace:
+        return data
 
 
 def drop_missing(
@@ -190,7 +201,8 @@ def drop_missing(
     drop_threshold_cols: float = 1,
     drop_threshold_rows: float = 1,
     col_exclude: Optional[List[str]] = None,
-) -> pd.DataFrame:
+    inplace: bool = False,
+) -> Optional[pd.DataFrame]:
     """ Drops completely empty columns and rows by default and optionally provides \
         flexibility to loosen restrictions to drop additional non-empty columns and \
         rows based on the fraction of NA-values.
@@ -225,7 +237,8 @@ def drop_missing(
     col_exclude = [] if col_exclude is None else col_exclude.copy()
     data_exclude = data[col_exclude]
 
-    data = pd.DataFrame(data).copy()
+    if not inplace:
+        data = pd.DataFrame(data).copy()
 
     data_dropped = data.drop(columns=col_exclude, errors="ignore")
     data_dropped = data_dropped.drop(
@@ -241,7 +254,9 @@ def drop_missing(
             _missing_vals(data)["mv_rows_ratio"] > drop_threshold_rows, :
         ].index
     ).dropna(axis=0, how="all")
-    return data_cleaned
+    
+    if not inplace:
+        return data_cleaned
 
 
 def data_cleaning(
@@ -256,7 +271,8 @@ def data_cleaning(
     cat_exclude: Optional[List[Union[str, int]]] = None,
     clean_col_names: bool = True,
     show: str = "changes",
-) -> pd.DataFrame:
+    inplace: bool = False,
+) -> Optional[pd.DataFrame]:
     """ Perform initial data cleaning tasks on a dataset, such as dropping single \
         valued and empty rows, empty columns as well as optimizing the datatypes.
 
@@ -324,7 +340,8 @@ def data_cleaning(
     _validate_input_bool(category, "category")
     _validate_input_range(cat_threshold, "cat_threshold", 0, 1)
 
-    data = pd.DataFrame(data).copy()
+    if not inplace:
+        data = pd.DataFrame(data).copy()
     data_cleaned = drop_missing(
         data, drop_threshold_cols, drop_threshold_rows, col_exclude=col_exclude
     )
@@ -357,7 +374,8 @@ def data_cleaning(
         show=show,
     )
 
-    return data_cleaned
+    if not inplace:
+        return data_cleaned
 
 
 class DataCleaner(BaseEstimator, TransformerMixin):
@@ -453,7 +471,8 @@ def mv_col_handling(
     corr_thresh_features: float = 0.5,
     corr_thresh_target: float = 0.3,
     return_details: bool = False,
-) -> pd.DataFrame:
+    inplace: bool = False,
+) -> Optional[pd.DataFrame]:
     """ Converts columns with a high ratio of missing values into binary features and \
     eventually drops them based on their correlation with other features and the \
     target variable. This function follows a three step process:
@@ -506,7 +525,8 @@ def mv_col_handling(
     _validate_input_range(corr_thresh_features, "corr_thresh_features", 0, 1)
     _validate_input_range(corr_thresh_target, "corr_thresh_target", 0, 1)
 
-    data = pd.DataFrame(data).copy()
+    if not inplace:
+        data = pd.DataFrame(data).copy()
     data_local = data.copy()
     mv_ratios = _missing_vals(data_local)["mv_cols_ratio"]
     cols_mv = mv_ratios[mv_ratios > mv_threshold].index.tolist()
@@ -533,9 +553,13 @@ def mv_col_handling(
         data = data.drop(columns=drop_cols)
 
     if return_details:
-        return data, cols_mv, drop_cols
+        if not inplace:
+            return data, cols_mv, drop_cols
+        else:
+            return cols_mv, drop_cols
 
-    return data
+    if not inplace:
+        return data
 
 
 class MVColHandler(BaseEstimator, TransformerMixin):
@@ -607,7 +631,8 @@ def pool_duplicate_subsets(
     min_col_pool: int = 3,
     exclude: Optional[List[str]] = None,
     return_details=False,
-) -> pd.DataFrame:
+    inplace: bool = False,
+) -> Optional[pd.DataFrame]:
     """ Checks for duplicates in subsets of columns and pools them. This can reduce \
         the number of columns in the data without loosing much information. Suitable \
         columns are combined to subsets and tested for duplicates. In case sufficient \
@@ -656,6 +681,9 @@ def pool_duplicate_subsets(
     _validate_input_range(subset_thresh, "subset_thresh", 0, 1)
     _validate_input_range(min_col_pool, "min_col_pool", 0, data.shape[1])
 
+    if not inplace:
+        data = pd.DataFrame(data).copy()
+    
     excluded_cols = []
     if exclude is not None:
         excluded_cols = data[exclude]
@@ -704,9 +732,13 @@ def pool_duplicate_subsets(
     data = pd.concat([data, pd.DataFrame(excluded_cols)], axis=1)
 
     if return_details:
-        return data, subset_cols
+        if not inplace:
+            return data, subset_cols
+        else:
+            return subset_cols
 
-    return data
+    if not inplace:
+        return data
 
 
 class SubsetPooler(BaseEstimator, TransformerMixin):
